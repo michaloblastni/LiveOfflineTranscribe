@@ -1,4 +1,4 @@
-A simple, accessible and offline real-time transcription app
+A simple, accessible and offline real-time transcription app.
 
 # Voskle Live Transcribe
 
