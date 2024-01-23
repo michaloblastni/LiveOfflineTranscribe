@@ -1,6 +1,6 @@
-# Voskle Live Transcribe
-
 A simple, accessible and offline real-time transcription app
+
+# Voskle Live Transcribe
 
 ## Yet another transcription app?
 
