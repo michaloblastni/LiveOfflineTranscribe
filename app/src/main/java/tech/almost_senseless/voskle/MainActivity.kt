@@ -57,7 +57,6 @@ import tech.almost_senseless.voskle.ui.customComposables.TimeouteErrorDialog
 import tech.almost_senseless.voskle.ui.customComposables.UnexpectedResponseDialog
 import tech.almost_senseless.voskle.ui.theme.VoskleLiveTranscribeTheme
 import tech.almost_senseless.voskle.util.UnzipUtils
-import tech.almost_senseless.voskle.vosklib.VoskHub
 import java.io.IOException
 import kotlin.io.path.createTempFile
 
@@ -69,36 +68,34 @@ private val Context.dataStore by preferencesDataStore(
 )
 
 class MainActivity : ComponentActivity() {
-    private val voskHub: VoskHub by lazy {
-        VoskHub(applicationContext)
-    }
-
-
+    private lateinit var viewModel: VLTViewModel
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
             VoskleLiveTranscribeTheme (darkTheme = isSystemInDarkTheme(), dynamicColor = true) {
-                val viewModel = viewModel<VLTViewModel>(
+                viewModel = viewModel<VLTViewModel>(
                     factory = VLTViewModelFactory(
                         UserPreferencesRepository(
                         applicationContext.dataStore
-                    )
+                    ), applicationContext
                     )
                 )
                 val state = viewModel.state
                 val settings = viewModel.settings.collectAsState(initial = UserPreferences())
-                voskHub.initializeServices(viewModel) // internally only executes ONCE then never again!
-                voskHub.setModelPath(settings.value.language.modelPath)
+
+
+                viewModel.getVoskHub().setModelPath(settings.value.language.modelPath)
+
                 val requestPermissionLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestPermission(),
                     onResult = { isGranted ->
                         if (isGranted) {
-                            if (voskHub.isModelAvailable()) {
-                                viewModel.onAction(VLTAction.SetRecordingStatus(true))
-                                voskHub.toggleRecording()
+                            if (viewModel.getVoskHub().isModelAvailable()) {
+                                //viewModel.onAction(VLTAction.SetRecordingStatus(true))
+                                viewModel.getVoskHub().toggleRecording()
                             } else {
-                                voskHub.initModel()
+                                viewModel.getVoskHub().initModel()
                             }
                         }
                     }
@@ -120,8 +117,7 @@ class MainActivity : ComponentActivity() {
                                 LanguagePicker(
                                     settings = settings.value,
                                     state = state,
-                                    voskHub = voskHub,
-                                    onAction = viewModel::onAction,
+                                    viewModel = viewModel,
                                     modifier = Modifier
                                         .padding(8.dp)
                                 )
@@ -144,8 +140,7 @@ class MainActivity : ComponentActivity() {
                                 LanguagePicker(
                                     settings = settings.value,
                                     state = state,
-                                    voskHub = voskHub,
-                                    onAction = viewModel::onAction,
+                                    viewModel = viewModel,
                                     modifier = Modifier
                                         .padding(8.dp)
                                 )
@@ -183,10 +178,10 @@ class MainActivity : ComponentActivity() {
                                             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED && !state.isRecording) {
                                                 viewModel.onAction(VLTAction.ShowPermissionsDialog(true))
                                             } else {
-                                                voskHub.toggleRecording()
-                                                viewModel.onAction(VLTAction.SetRecordingStatus(
-                                                    !viewModel.state.isRecording
-                                                ))
+                                                viewModel.getVoskHub().toggleRecording()
+                                                //viewModel.onAction(VLTAction.SetRecordingStatus(
+                                                    //!viewModel.state.isRecording
+                                                //))
                                             }
                                         },
                                         modifier = Modifier
@@ -242,10 +237,10 @@ class MainActivity : ComponentActivity() {
                                             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED && !state.isRecording) {
                                                 viewModel.onAction(VLTAction.ShowPermissionsDialog(true))
                                             } else {
-                                                voskHub.toggleRecording()
-                                                viewModel.onAction(VLTAction.SetRecordingStatus(
-                                                    !viewModel.state.isRecording
-                                                ))
+                                                viewModel.getVoskHub().toggleRecording()
+                                                //viewModel.onAction(VLTAction.SetRecordingStatus(
+                                                    //!viewModel.state.isRecording
+                                                //))
                                             }
                                         },
                                         modifier = Modifier
@@ -316,7 +311,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     if (state.error != null) {
-                        val dialog = when (val err = state.error!!) { // Unnecessary? If I remove this, when isn't exhaustive. Make up your mind...
+                        val dialog = when (@Suppress("UNNECESSARY_NOT_NULL_ASSERTION") val err = state.error!!) {
                             is ErrorKind.ConnectionFailed -> {
                                 ConnectionErrorDialog(
                                     downloadFunction = ::downloadModel,
@@ -365,6 +360,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        if(viewModel.state.isRecording)
+        {
+            viewModel.getVoskHub().toggleRecording()
+            //viewModel.onAction(VLTAction.SetRecordingStatus(false))
+        }
+    }
     private fun contactUs() {
         Log.d(TAG, "contactUs: Function called")
         val subject = "[vlt] Feedback"
@@ -415,7 +418,7 @@ class MainActivity : ComponentActivity() {
                             viewModel.onAction(VLTAction.UpdateFetchState(FetchState.UNPACKING))
                             UnzipUtils.unzip(sourceFile, "$externalFilesDir/models")
                             viewModel.onAction(VLTAction.ShowDownloadSuccess(true))
-                            voskHub.initModel()
+                            viewModel.getVoskHub().initModel()
                             sourceFile.delete()
                         } catch (e: IOException) {
                             viewModel.onAction(VLTAction.SetError(ErrorKind.DataProcessionFailed(

@@ -21,25 +21,38 @@ import java.util.function.Consumer
 private const val TAG = "VoskHub"
 
 class VoskHub (
-    private val context: Context,
+    private val context: Context
 ) : RecognitionListener {
+    // ViewModel Ressources
     private var viewModel: VLTViewModel? = null
     private var onAction:((VLTAction) -> Unit)? = null
-    private var modelPath: String? = null
 
-
+    // RecognitionListener Ressources
     private var speechService: SpeechService? = null
+    private var modelPath: String? = null
     private var model: Model? = null
 
 
-
-    private var servicesUninitialized: Boolean = true
-    fun initializeServices(viewModel: VLTViewModel)
-    {
-        subscribeToViewModel(viewModel) && servicesUninitialized && initModel()
-        this.servicesUninitialized = false
+    // ViewModel methods
+    fun subscribeToViewModel(viewModel: VLTViewModel): Boolean{
+        if (this.viewModel == null || this.viewModel!! !== viewModel) {
+            this.viewModel = viewModel
+            this.onAction = viewModel::onAction
+            updateApplicationState(VLTAction.RegisterVoskHub(this))
+        }
+        return this.viewModel != null
     }
 
+    private fun updateApplicationState(action: VLTAction): Boolean {
+        if (this.viewModel != null && this.onAction != null)
+        {
+            this.onAction!!(action)
+            return true
+        }
+        return false
+    }
+
+    // Speech-model methods
     fun setModelPath(modelPath: String) {
         this.modelPath = modelPath
     }
@@ -65,17 +78,55 @@ class VoskHub (
         return this.model != null
     }
 
-    private fun subscribeToViewModel(viewModel: VLTViewModel): Boolean{
-        if (this.viewModel == null || this.viewModel!! !== viewModel) {
-            this.viewModel = viewModel
-            this.onAction = viewModel::onAction
-            updateApplicationState(VLTAction.RegisterVoskHub(this))
+    private fun getModel(modelPath: String, completeCallback: Consumer<Model>, errorCallback: Consumer<IOException>) {
+        val executor = Executors.newSingleThreadExecutor()
+        val handler = Handler(Looper.getMainLooper())
+        executor.execute {
+            try {
+                val externalFilesDir = this.context.getExternalFilesDir(null) ?: throw IOException("Cannot get external files dir. External storage state is ${Environment.getExternalStorageState()}.")
+                val model = Model("$externalFilesDir/models/$modelPath")
+                Log.d(TAG, "getModel: Model created successfully.")
+                handler.post { completeCallback.accept(model) }
+            } catch (e: IOException) {
+                Log.e(TAG, "getModel: ERROR ${e.message}")
+                handler.post { errorCallback.accept(e) }
+            }
         }
-        return this.viewModel != null
     }
 
+    fun isModelAvailable(): Boolean {
+        val externalFilesDir = context.getExternalFilesDir(null)
+        val pathToModel = modelPath ?: Languages.ENGLISH_US.modelPath
+        val dir = File("$externalFilesDir/models/$pathToModel")
+        return dir.exists() && dir.isDirectory
+    }
 
-    //VOSK functions
+    // Transcription methods
+    fun toggleRecording() {
+        //Dont act if VoskHub is not properly initialized
+        if (this.viewModel == null || !this.viewModel!!.state.modelLoaded)
+            return
+
+        if (!this.initModel())
+            return
+
+        if (speechService != null || this.viewModel?.state?.isRecording == true) {
+            speechService?.stop()
+            speechService = null
+            updateApplicationState(VLTAction.SetRecordingStatus(false))
+        } else {
+            try {
+                val rec = Recognizer(model, 16000.0f)
+                speechService = SpeechService(rec, 16000.0f)
+                speechService!!.startListening(this)
+                updateApplicationState(VLTAction.SetRecordingStatus(true))
+            } catch (e: IOException) {
+                onError(e)
+            }
+        }
+    }
+
+    // VOSK methods
     override fun onPartialResult(hypothesis: String?) {
         val data = JSONObject(hypothesis ?: "").get("partial").toString()
         if (this.viewModel != null && data.isNotEmpty())
@@ -112,67 +163,13 @@ class VoskHub (
         ))
     }
 
-    //Control functions
-    fun toggleRecording() {
-        //Dont act if VoskHub is not properly initialized
-        if (this.viewModel == null || !this.viewModel!!.state.modelLoaded)
-            return
-
-        if (!this.initModel())
-            return
-
-        if (speechService != null) {
-            speechService?.stop()
-            speechService = null
-        } else {
-            try {
-                val rec = Recognizer(model, 16000.0f)
-                speechService = SpeechService(rec, 16000.0f)
-                speechService!!.startListening(this)
-            } catch (e: IOException) {
-                onError(e)
-            }
-        }
-    }
-
+    // Safety methods
     fun reset(){
         speechService?.stop()
         speechService?.shutdown()
         speechService = null
         model = null
-        updateApplicationState(VLTAction.SetModelStatus(false)) //TODO: Das sollte anders gelöst werden...
+        updateApplicationState(VLTAction.SetModelStatus(false)) // Keep this in mind when using reset!
     }
 
-    //Safe access to viewmodel
-    private fun updateApplicationState(action: VLTAction): Boolean {
-        if (this.viewModel != null && this.onAction != null)
-        {
-            this.onAction!!(action)
-            return true
-        }
-        return false
-    }
-
-    private fun getModel(modelPath: String, completeCallback: Consumer<Model>, errorCallback: Consumer<IOException>) {
-        val executor = Executors.newSingleThreadExecutor()
-        val handler = Handler(Looper.getMainLooper())
-        executor.execute {
-            try {
-                val externalFilesDir = this.context.getExternalFilesDir(null) ?: throw IOException("Cannot get external files dir. External storage state is ${Environment.getExternalStorageState()}.")
-                val model = Model("$externalFilesDir/models/$modelPath")
-                Log.d(TAG, "getModel: Model created successfully.")
-                handler.post { completeCallback.accept(model) }
-            } catch (e: IOException) {
-                Log.e(TAG, "getModel: ERROR ${e.message}")
-                handler.post { errorCallback.accept(e) }
-            }
-        }
-    }
-
-    fun isModelAvailable(): Boolean {
-        val externalFilesDir = context.getExternalFilesDir(null)
-        val pathToModel = modelPath ?: Languages.ENGLISH_US.modelPath
-        val dir = File("$externalFilesDir/models/$pathToModel")
-        return dir.exists() && dir.isDirectory
-    }
 }

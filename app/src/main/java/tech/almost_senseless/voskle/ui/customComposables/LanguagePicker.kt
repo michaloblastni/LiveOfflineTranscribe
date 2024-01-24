@@ -15,23 +15,22 @@ import tech.almost_senseless.voskle.FetchState
 import tech.almost_senseless.voskle.R
 import tech.almost_senseless.voskle.VLTAction
 import tech.almost_senseless.voskle.VLTState
+import tech.almost_senseless.voskle.VLTViewModel
 import tech.almost_senseless.voskle.data.Languages
 import tech.almost_senseless.voskle.data.UserPreferences
-import tech.almost_senseless.voskle.vosklib.VoskHub
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LanguagePicker(
     settings: UserPreferences,
     state: VLTState,
-    voskHub: VoskHub,
-    onAction: (VLTAction) -> Unit,
+    viewModel: VLTViewModel,
     modifier: Modifier = Modifier
 ) {
     ExposedDropdownMenuBox(
         expanded = state.languagePickerExpanded,
         onExpandedChange = {
-            onAction(VLTAction.SetLanguagePickerState(!state.languagePickerExpanded))
+            viewModel.onAction(VLTAction.SetLanguagePickerState(!state.languagePickerExpanded))
         },
         modifier = Modifier
             .then(modifier)
@@ -54,20 +53,20 @@ fun LanguagePicker(
         DropdownMenu(
             expanded = state.languagePickerExpanded,
             onDismissRequest = {
-                onAction(VLTAction.SetLanguagePickerState(false))
+                viewModel.onAction(VLTAction.SetLanguagePickerState(false))
             }) {
             Languages.values().forEach {
                 DropdownMenuItem(text = {
                                         Text(text = it.langName)
                 }, onClick = {
-                    onAction(VLTAction.SetLanguagePickerState(false))
-                    onAction(VLTAction.SetLanguage(it))
-                    voskHub.reset()
-                    voskHub.setModelPath(it.modelPath)
-                    if (voskHub.isModelAvailable()) {
-                        voskHub.initModel()
+                    viewModel.onAction(VLTAction.SetLanguagePickerState(false))
+                    viewModel.onAction(VLTAction.SetLanguage(it))
+                    viewModel.getVoskHub().reset()
+                    viewModel.getVoskHub().setModelPath(it.modelPath)
+                    if (viewModel.getVoskHub().isModelAvailable()) {
+                        viewModel.getVoskHub().initModel()
                     } else {
-                        onAction(VLTAction.ShowDownloadConfirmation(true))
+                        viewModel.onAction(VLTAction.ShowDownloadConfirmation(true))
                     }
                 })
             }
