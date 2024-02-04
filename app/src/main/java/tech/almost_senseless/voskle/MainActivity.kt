@@ -200,9 +200,6 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             } else {
                                                 viewModel.getVoskHub().toggleRecording()
-                                                //viewModel.onAction(VLTAction.SetRecordingStatus(
-                                                //!viewModel.state.isRecording
-                                                //))
                                             }
                                         },
                                         modifier = Modifier
@@ -269,9 +266,6 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             } else {
                                                 viewModel.getVoskHub().toggleRecording()
-                                                //viewModel.onAction(VLTAction.SetRecordingStatus(
-                                                //!viewModel.state.isRecording
-                                                //))
                                             }
                                         },
                                         modifier = Modifier
@@ -345,8 +339,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     if (state.error != null) {
-                        val dialog = when (@Suppress("UNNECESSARY_NOT_NULL_ASSERTION") val err =
-                            state.error!!) {
+                        val dialog = when (@Suppress("UNNECESSARY_NOT_NULL_ASSERTION") val err = state.error!!) {
                             is ErrorKind.ConnectionFailed -> {
                                 ConnectionErrorDialog(
                                     downloadFunction = ::downloadModel,
@@ -401,7 +394,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        if(viewModel.state.isRecording) {
+        if (viewModel.state.isRecording) {
             viewModel.getVoskHub().toggleRecording()
         }
     }
