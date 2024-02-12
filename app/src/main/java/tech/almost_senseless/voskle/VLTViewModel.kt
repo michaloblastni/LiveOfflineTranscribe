@@ -40,6 +40,8 @@ class VLTViewModel(private val userPreferences: UserPreferencesRepository, @Supp
             is VLTAction.ToggleAutoscroll -> toggleAutoscroll(action.autoscroll)
             is VLTAction.RegisterVoskHub -> registerVoskHub(action.voskHub)
             is VLTAction.UpdateFetchState -> updateFetchstate(action.state)
+            is VLTAction.SetKeyboardInput -> setKeyboardInput(action.enabled)
+            is VLTAction.EditTranscript -> editTranscript(action.text)
         }
     }
 
@@ -163,6 +165,14 @@ class VLTViewModel(private val userPreferences: UserPreferencesRepository, @Supp
     override fun onCleared(){
         this.state.voskHubInstance?.reset()
         super.onCleared()
+    }
+
+    private fun setKeyboardInput(enabled: Boolean) {
+        state = state.copy(keyboardInput = enabled)
+    }
+
+    fun editTranscript(text: String) {
+        state = state.copy(transcript = text)
     }
 }
 

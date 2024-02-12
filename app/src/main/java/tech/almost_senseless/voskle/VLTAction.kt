@@ -22,4 +22,6 @@ sealed class VLTAction{
     data class ToggleAutoscroll(val autoscroll: Boolean): VLTAction()
     data class RegisterVoskHub(val voskHub: VoskHub): VLTAction()
     data class UpdateFetchState(val state: FetchState): VLTAction()
+    data class SetKeyboardInput(val enabled: Boolean): VLTAction()
+    data class EditTranscript(val text: String): VLTAction()
 }

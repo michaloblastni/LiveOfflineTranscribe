@@ -44,4 +44,6 @@
     <string name="unpacking_state">Verarbeite Modell...</string>
     <string name="no_model_loaded_state">Kein Modell geladen.</string>
     <string name="ready_to_transcribe_state">Betriebsbereit.</string>
+    <string name="keyboard_input">Tastatureingabe</string>
+    <string name="transcript_label">Transkript:</string>
 </resources>

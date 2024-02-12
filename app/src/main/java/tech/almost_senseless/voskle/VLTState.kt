@@ -1,6 +1,5 @@
 package tech.almost_senseless.voskle
 
-import androidx.compose.foundation.ScrollState
 import tech.almost_senseless.voskle.vosklib.VoskHub
 
 data class VLTState(
@@ -15,4 +14,5 @@ data class VLTState(
     val error: ErrorKind? = null,
     val voskHubInstance: VoskHub? = null,
     val fetchState: FetchState = FetchState.NO_MODEL,
+    val keyboardInput: Boolean = false,
 )

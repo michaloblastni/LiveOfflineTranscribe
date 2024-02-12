@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -118,6 +121,7 @@ class MainActivity : ComponentActivity() {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
                 ) {
 
@@ -145,6 +149,24 @@ class MainActivity : ComponentActivity() {
                                 ) {
                                     Text(text = stringResource(id = R.string.settings))
                                 }
+                                Column(
+                                    modifier = Modifier
+                                        .padding(horizontal = 4.dp)
+                                        .toggleable(
+                                            value = state.keyboardInput,
+                                            role = Role.Switch,
+                                            onValueChange = {
+                                                if (state.isRecording && !state.keyboardInput)
+                                                    viewModel.getVoskHub().toggleRecording()
+                                                viewModel.onAction(VLTAction.SetKeyboardInput(
+                                                    !state.keyboardInput
+                                                ))
+                                            }
+                                        ),
+                                ) {
+                                    Switch(checked = state.keyboardInput, null)
+                                    Text(text = stringResource(id = R.string.keyboard_input))
+                                }
                             }
                         }
 
@@ -169,6 +191,24 @@ class MainActivity : ComponentActivity() {
                                 ) {
                                     Text(text = stringResource(id = R.string.settings))
                                 }
+                                Row(
+                                    modifier = Modifier
+                                        .padding(vertical = 4.dp)
+                                        .toggleable(
+                                            value = state.keyboardInput,
+                                            role = Role.Switch,
+                                            onValueChange = { enabled ->
+                                                if (state.isRecording && !state.keyboardInput)
+                                                    viewModel.getVoskHub().toggleRecording()
+                                                viewModel.onAction(VLTAction.SetKeyboardInput(
+                                                    !state.keyboardInput
+                                                ))
+                                            }
+                                        ),
+                                ) {
+                                    Switch(checked = state.keyboardInput, null)
+                                    Text(text = stringResource(id = R.string.keyboard_input))
+                                }
                             }
                         }
                     }
@@ -190,7 +230,7 @@ class MainActivity : ComponentActivity() {
 
                                 Row {
                                     Button(
-                                        enabled = viewModel.state.modelLoaded,
+                                        enabled = viewModel.state.modelLoaded && !state.keyboardInput,
                                         onClick = {
                                             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED && !state.isRecording) {
                                                 viewModel.onAction(

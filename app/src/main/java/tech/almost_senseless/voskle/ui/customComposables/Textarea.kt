@@ -7,13 +7,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import tech.almost_senseless.voskle.R
 import tech.almost_senseless.voskle.VLTAction
 import tech.almost_senseless.voskle.VLTState
 import tech.almost_senseless.voskle.data.UserPreferences
@@ -34,8 +37,15 @@ fun Textarea(
     }
     TextField(
         value = state.transcript,
-        onValueChange = { onAction(VLTAction.UpdateTranscript(it)) },
-        readOnly = true,
+        onValueChange = {
+            if (state.keyboardInput) {
+                onAction(VLTAction.EditTranscript(it))
+            } else {
+                onAction(VLTAction.UpdateTranscript(it))
+            }
+                        },
+        readOnly = !state.keyboardInput,
+        label = { Text(text = stringResource(id = R.string.transcript_label)) },
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp)
