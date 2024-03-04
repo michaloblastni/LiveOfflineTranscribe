@@ -21,9 +21,9 @@ VLT is our answer to these caveats.
 - *Continuous transcription*: Once started, the transcription keeps running until stopped by the user.
 - *Completely offline*: VLT uses [VOSK](https://alphacephei.com/vosk/) to recognize and transcribe the speech on the user's device.
 - *Sufficiently accurate*: The utilized small [VOSK models](https://alphacephei.com/vosk/models) offer a solid compromise between size of the models, memory usage and accuracy of the transcript; using noise-cancelling external microphones can improve the transcript accuracy farther.
-- *Only what's needed*: All small VOSK models (currently 24 different languages) are supported and can get downloaded as needed; they remain on the device persistently until the app gets uninstalled.
-- *Free and Open-Source*: The app is licensed unter the Apache license, version 2.0.
-- *Accessibility front and center*: VLT is completely accessible for braille display users and supports light and dark theme; the font sizes can get adjusted directly in the app settingsand a zoom of up to 200 % should not break the UI. If you encounter any accessibility issues, let us know!
+- *Only what's needed*: All small VOSK models (currently 26 different languages) are supported and can get downloaded as needed; they remain on the device persistently until the app gets uninstalled.
+- *Free and Open-Source*: The app is licensed under the Apache license, version 2.0.
+- *Accessibility front and center*: VLT is completely accessible for braille display users and supports light and dark theme; the font sizes can get adjusted directly in the app settings and a zoom of up to 200 % should not break the UI. If you encounter any accessibility issues, let us know!
 - *Negligible battery usage*: Under normal circumstances, the battery drain caused by VLT should be negligible.
 
 **Android 9+ supported.**
