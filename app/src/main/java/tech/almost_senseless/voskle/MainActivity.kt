@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -34,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.modifier.modifierLocalConsumer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -63,6 +65,7 @@ import tech.almost_senseless.voskle.ui.customComposables.Textarea
 import tech.almost_senseless.voskle.ui.customComposables.TimeouteErrorDialog
 import tech.almost_senseless.voskle.ui.customComposables.UnexpectedResponseDialog
 import tech.almost_senseless.voskle.ui.theme.VoskleLiveTranscribeTheme
+import tech.almost_senseless.voskle.util.ObservableInputStream
 import tech.almost_senseless.voskle.util.UnzipUtils
 import java.io.IOException
 import kotlin.io.path.createTempFile
@@ -97,7 +100,8 @@ class MainActivity : ComponentActivity() {
                     viewModel.getVoskHub().isModelAvailable(),
                     settings.value.language,
                     state.modelLoaded,
-                    state.fetchState
+                    state.fetchState,
+                    settings.value.generateSpeakerLabels
                 ) {
                     if (viewModel.getVoskHub().getModelPath() != settings.value.language.modelPath) {
                         // If the language changed, change the model path referenced in VoskHub
@@ -111,7 +115,7 @@ class MainActivity : ComponentActivity() {
 
                         // Initialize the model if it is already downloaded.
                         if (viewModel.getVoskHub().isModelAvailable()) {
-                            viewModel.getVoskHub().initModel()
+                            viewModel.getVoskHub().initModel(settings.value.generateSpeakerLabels)
                         } else {
                             viewModel.onAction(VLTAction.ShowDownloadConfirmation(true))
                         }
@@ -119,7 +123,23 @@ class MainActivity : ComponentActivity() {
 
                     // Initialize the model if it's downloaded but not initialized yet.
                     if (viewModel.getVoskHub().isModelAvailable() && !state.modelLoaded && state.fetchState == FetchState.NO_MODEL) {
-                        viewModel.getVoskHub().initModel()
+                        viewModel.getVoskHub().initModel(settings.value.generateSpeakerLabels)
+                    }
+
+                    // A local variable is preferable here, as we don't
+                    // want to accidentally initialize the model with the wrong settings.
+                    val vosk = viewModel.getVoskHub()
+
+                    // Reinitialize the model if speaker recognition is wanted
+                    // but not enabled.
+                    if (settings.value.generateSpeakerLabels && state.modelLoaded && state.fetchState == FetchState.READY && !vosk.isUsingSpeakerRecognition()) {
+                        vosk.reset()
+                        vosk.initModel(true)
+                    }
+
+                    if (!settings.value.generateSpeakerLabels && state.modelLoaded && state.fetchState == FetchState.READY && vosk.isUsingSpeakerRecognition()) {
+                        vosk.reset()
+                        vosk.initModel()
                     }
                 }
 
@@ -207,12 +227,20 @@ class MainActivity : ComponentActivity() {
                                                             true
                                                         )
                                                     )
-                                                    viewModel.getVoskHub().toggleRecording()
+                                                    viewModel
+                                                        .getVoskHub()
+                                                        .toggleRecording()
                                                 }
 
                                                 if (state.keyboardInput && state.resumeRecording) {
-                                                    viewModel.getVoskHub().toggleRecording()
-                                                    viewModel.onAction(VLTAction.SetResumeRecording(false))
+                                                    viewModel
+                                                        .getVoskHub()
+                                                        .toggleRecording()
+                                                    viewModel.onAction(
+                                                        VLTAction.SetResumeRecording(
+                                                            false
+                                                        )
+                                                    )
                                                 }
 
                                                 // Trigger the insertion of a result separator if appropriate
@@ -226,8 +254,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                         ),
                                 ) {
-                                    Switch(checked = state.keyboardInput, null)
-                                    Text(text = stringResource(id = R.string.keyboard_input))
+                                    Switch(checked = state.keyboardInput, null, modifier = Modifier.padding(horizontal = 8.dp))
+                                    Text(text = stringResource(id = R.string.keyboard_input), color = MaterialTheme.colorScheme.tertiary)
                                 }
                             }
                         }
@@ -265,13 +293,25 @@ class MainActivity : ComponentActivity() {
                                                 }
 
                                                 if (state.isRecording && !state.keyboardInput) {
-                                                    viewModel.onAction(VLTAction.SetResumeRecording(true))
-                                                    viewModel.getVoskHub().toggleRecording()
+                                                    viewModel.onAction(
+                                                        VLTAction.SetResumeRecording(
+                                                            true
+                                                        )
+                                                    )
+                                                    viewModel
+                                                        .getVoskHub()
+                                                        .toggleRecording()
                                                 }
 
                                                 if (state.keyboardInput && state.resumeRecording) {
-                                                    viewModel.getVoskHub().toggleRecording()
-                                                    viewModel.onAction(VLTAction.SetResumeRecording(false))
+                                                    viewModel
+                                                        .getVoskHub()
+                                                        .toggleRecording()
+                                                    viewModel.onAction(
+                                                        VLTAction.SetResumeRecording(
+                                                            false
+                                                        )
+                                                    )
                                                 }
 
                                                 // Trigger the insertion of a result separator if appropriate.
@@ -285,8 +325,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                         ),
                                 ) {
-                                    Switch(checked = state.keyboardInput, null)
-                                    Text(text = stringResource(id = R.string.keyboard_input))
+                                    Switch(checked = state.keyboardInput, null, modifier = Modifier.padding(horizontal = 8.dp))
+                                    Text(text = stringResource(id = R.string.keyboard_input), color = MaterialTheme.colorScheme.tertiary)
                                 }
                             }
                         }
@@ -349,13 +389,21 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                 }
-                                Row(modifier = Modifier
-                                    .semantics { liveRegion = LiveRegionMode.Assertive }
-                                    .weight(1f)
-                                    .padding(8.dp)
-                                    .align(Alignment.CenterHorizontally)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .semantics { liveRegion = LiveRegionMode.Assertive }
+                                        .weight(1f)
+                                        .padding(8.dp)
                                 ) {
-                                    Text(text = getFetchStateText(state.fetchState))
+                                    Text(text = getFetchStateText(state.fetchState), color = MaterialTheme.colorScheme.tertiary)
+                                    if (state.modelProcessingProgress != null) {
+                                        LinearProgressIndicator(
+                                            progress = state.modelProcessingProgress / 100f,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -421,12 +469,21 @@ class MainActivity : ComponentActivity() {
                                 }
 
 
-                                Row(modifier = Modifier
-                                    .semantics { liveRegion = LiveRegionMode.Assertive }
-                                    .padding(8.dp)
-                                    .align(Alignment.CenterHorizontally)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .semantics { liveRegion = LiveRegionMode.Assertive }
+                                        .padding(8.dp)
+                                        .weight(1f)
                                 ) {
-                                    Text(text = getFetchStateText(state.fetchState))
+                                    Text(text = getFetchStateText(state.fetchState), color = MaterialTheme.colorScheme.tertiary)
+                                    if (state.modelProcessingProgress != null) {
+                                        LinearProgressIndicator(
+                                            progress = state.modelProcessingProgress / 100f,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -436,6 +493,7 @@ class MainActivity : ComponentActivity() {
                     if (state.displaySettingsDialog) {
                         SettingsDialog(
                             settings = settings.value,
+                            state = state,
                             contactUs = ::contactUs,
                             onAction = viewModel::onAction
                         )
@@ -569,7 +627,10 @@ class MainActivity : ComponentActivity() {
                     } else {
                         try {
                             val externalFilesDir = applicationContext.getExternalFilesDir(null)
-                            val dataStream = response.body!!.byteStream()
+                            val dataStream = ObservableInputStream(response.body!!.byteStream()) {
+                                val progress = it * 100 / response.body!!.contentLength()
+                                viewModel.onAction(VLTAction.UpdateModelProcessingProgress(progress.toFloat()))
+                            }
                             val sourceFile = createTempFile().toFile()
                             sourceFile.outputStream().use { output ->
                                 dataStream.copyTo(output)
@@ -577,6 +638,7 @@ class MainActivity : ComponentActivity() {
                             viewModel.onAction(VLTAction.UpdateFetchState(FetchState.UNPACKING))
                             UnzipUtils.unzip(sourceFile, "$externalFilesDir/models")
                             viewModel.onAction(VLTAction.ShowDownloadSuccess(true))
+                            viewModel.onAction(VLTAction.UpdateModelProcessingProgress(null))
                             sourceFile.delete()
                         } catch (e: IOException) {
                             viewModel.onAction(VLTAction.SetError(ErrorKind.DataProcessionFailed(

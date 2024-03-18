@@ -20,5 +20,10 @@ data class VLTState(
     val isFocused: Boolean = true,
     val transcriptFocused: Boolean = false,
     val resumeRecording: Boolean = false,
-    val textFieldValue: TextFieldValue = TextFieldValue(text = "", selection = TextRange.Zero)
+    val textFieldValue: TextFieldValue = TextFieldValue(text = "", selection = TextRange.Zero),
+    val speakers: MutableList<DoubleArray> = mutableListOf(),
+    val currentSpeaker: Int? = null,
+    val previousSpeaker: Int? = -1,
+    val modelProcessingProgress: Float? = null,
+    val speakerModelProcessingProgress: Float? = null
 )
