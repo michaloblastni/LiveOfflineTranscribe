@@ -55,10 +55,10 @@
     <string name="unknown_speaker">Unbekannt:</string>
     <string name="speaker">Person %1$s:</string>
     <string name="download_speaker_model">Modell für Sprechererkkennung herunterladen</string>
-    <string name="SMALL">Klein</string>
     <string name="MEDIUM">Mittel</string>
     <string name="LARGE">Groß</string>
-    <string name="LARGEST">Am größten</string>
+    <string name="VERY_LARGE">Sehr groß</string>
+    <string name="LARGEST">Größte</string>
     <string name="get_help">Brauchen Sie Hilfe? Besuchen Sie %1$s</string>
     <string name="get_help_link">https://vlt.almost-senseless.tech/de/</string>
     <!-- Language names -->
@@ -91,4 +91,6 @@
     <string name="lang_vn">Vietnamesisch</string>
     <string name="privacy_policy">Datenschutzerklärung</string>
     <string name="privacy_policy_url">https://vlt.almost-senseless.tech/de/privacy-policy/</string>
+    <string name="high_contrast">Hoher Kontrast</string>
+    <string name="high_contrast_description">Wenn dies ausgewählt ist, werden im dunklen Modus besonders hohe Kontraste verwendet.</string>
 </resources>

@@ -17,10 +17,10 @@ import java.io.IOException
 private const val TAG = "PreferencesRepo"
 
 enum class FontSizes(val size: TextUnit, val lineHeight: TextUnit) {
-    SMALL(12.sp, 18.sp),
     MEDIUM(16.sp, 24.sp),
     LARGE(24.sp, 36.sp),
-    LARGEST(36.sp, 54.sp)
+    VERY_LARGE(36.sp, 54.sp),
+    LARGEST(72.sp, 108.sp)
 }
 
 data class UserPreferences(
@@ -28,7 +28,8 @@ data class UserPreferences(
     val fontSize: FontSizes = FontSizes.MEDIUM,
     val autoscroll: Boolean = true,
     val stopRecordingOnFocusLoss: Boolean = true,
-    val generateSpeakerLabels: Boolean = false
+    val generateSpeakerLabels: Boolean = false,
+    val highContrast: Boolean = true
 )
 
 class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
@@ -38,6 +39,7 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         val autoscroll = booleanPreferencesKey("autoscroll")
         val stopRecordingOnFocusLoss = booleanPreferencesKey("stopRecordingOnFocusLoss")
         val generateSpeakerLabels = booleanPreferencesKey("generateSpeakerLabels")
+        val highContrast = booleanPreferencesKey("highContrast")
     }
 
     val userPreferencesFlow: Flow<UserPreferences> = dataStore.data
@@ -83,6 +85,12 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         }
     }
 
+    suspend fun updateHighContrast(highContrast: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.highContrast] = highContrast
+        }
+    }
+
     private fun mapUserPreferences(preferences: Preferences): UserPreferences {
         val language = Languages.valueOf(
             preferences[PreferencesKeys.language] ?: Languages.ENGLISH_US.name
@@ -93,6 +101,7 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         val autoscroll = preferences[PreferencesKeys.autoscroll] ?: true
         val stopRecordingOnFocusLoss = preferences[PreferencesKeys.stopRecordingOnFocusLoss] ?: true
         val generateSpeakerLabels = preferences[PreferencesKeys.generateSpeakerLabels] ?: false
-return UserPreferences(language, transcriptFontSize, autoscroll, stopRecordingOnFocusLoss, generateSpeakerLabels)
+        val highContrast = preferences[PreferencesKeys.highContrast] ?: true
+return UserPreferences(language, transcriptFontSize, autoscroll, stopRecordingOnFocusLoss, generateSpeakerLabels, highContrast)
     }
 }

@@ -33,7 +33,8 @@ class OSSLicensesActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            VoskleLiveTranscribeTheme(darkTheme = isSystemInDarkTheme(), dynamicColor = true) {
+            val highContrast = intent.extras!!.getBoolean("highContrast")
+            VoskleLiveTranscribeTheme(darkTheme = isSystemInDarkTheme(), dynamicColor = true, highContrast = highContrast) {
                 val context = LocalContext.current
                 Surface(
                     modifier = Modifier.fillMaxSize(),
