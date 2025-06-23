@@ -2,6 +2,9 @@
 
 A simple, accessible and offline real-time transcription app for Android.
 
+## Adaptation of the original repo
+The transcription keeps running when the phone is locked. At any time, you can unlock the display and see what was said.
+
 ## Yet another transcription app?
 
 It's true that many apps are capable of transcribing speech to text; increasingly, even mobile operating systems offer options to recognize speech in the vicinity and transcribe it. In our experience, though, there usually are one or more of the following caveats:
@@ -17,7 +20,6 @@ It's true that many apps are capable of transcribing speech to text; increasingl
 VLT is our answer to these caveats.
 
 ## Features
-
 - **Continuous transcription**: Once started, the transcription keeps running until stopped by the user.
 - **Completely offline**: VLT uses [VOSK](https://alphacephei.com/vosk/) to recognize and transcribe the speech on the user's device.
 - **Sufficiently accurate**: The utilized small [VOSK models](https://alphacephei.com/vosk/models) offer a solid compromise between size of the models, memory usage and accuracy of the transcript; using noise-cancelling external microphones can improve the transcript accuracy farther.

@@ -1,11 +1,14 @@
 package tech.almost_senseless.voskle
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -13,6 +16,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +46,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.viewmodel.compose.viewModel
 import okhttp3.Call
@@ -49,6 +54,7 @@ import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import org.json.JSONObject
 import tech.almost_senseless.voskle.data.Languages
 import tech.almost_senseless.voskle.data.UserPreferences
 import tech.almost_senseless.voskle.data.UserPreferencesRepository
@@ -70,19 +76,61 @@ import tech.almost_senseless.voskle.util.UnzipUtils
 import java.io.IOException
 import kotlin.io.path.createTempFile
 
-
 private const val TAG = "MainActivity"
 const val PREFERENCES_DATASTORE = "preferences"
+private val readOnlyProperty = preferencesDataStore(
+    name = PREFERENCES_DATASTORE
+)
+
 val Context.dataStore by preferencesDataStore(
     name = PREFERENCES_DATASTORE
 )
 
 class MainActivity : ComponentActivity() {
     private lateinit var viewModel: VLTViewModel
+    private lateinit var transcriptReceiver: BroadcastReceiver
+
+    private fun isServiceRunning(): Boolean {
+        val manager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        return manager.getRunningServices(Int.MAX_VALUE)
+            .any { it.service.className == TranscriptionService::class.java.name }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Languages.initialize(applicationContext)
 
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            val serviceIntent = Intent(this, TranscriptionService::class.java)
+            startForegroundService(serviceIntent)
+        }
+
+        transcriptReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val latestResult = intent?.getStringExtra("transcript") ?: ""
+                Log.d("TranscriptDebug", "Latest recognized: $latestResult")
+                if (latestResult.isNotBlank()) {
+                    val text = try {
+                        JSONObject(latestResult).optString("text", "")
+                    } catch (e: Exception) {
+                        Log.e("TranscriptDebug", "Failed to parse transcript JSON", e)
+                        ""
+                    }
+                    if (text.isNotBlank()) {
+                        viewModel.onAction(VLTAction.UpdateTranscript(text))
+                    }
+                }
+            }
+        }
+
+        val result = ContextCompat.registerReceiver(
+            this,
+            transcriptReceiver,
+            IntentFilter("TRANSCRIPTION_UPDATE"),
+            ContextCompat.RECEIVER_EXPORTED
+        )
+        Log.d("RegisterReceiver", "Registered BroadcastReceiver for TRANSCRIPTION_UPDATE $result")
         setContent {
             viewModel = viewModel(
                 factory = VLTViewModelFactory(
@@ -91,11 +139,29 @@ class MainActivity : ComponentActivity() {
                     ), applicationContext
                 )
             )
+            LaunchedEffect(Unit) {
+                val prefs = getSharedPreferences("voskle", Context.MODE_PRIVATE)
+                val fullTranscript = prefs.getString("transcript", "") ?: ""
+                viewModel.onAction(VLTAction.UpdateTranscript(fullTranscript))
+                val running = isServiceRunning()
+                viewModel.onAction(VLTAction.SetRecordingStatus(running))
+            }
+
             val state = viewModel.state
             val settings = viewModel.settings.collectAsState(initial = UserPreferences())
             VoskleLiveTranscribeTheme(darkTheme = isSystemInDarkTheme(), dynamicColor = true, highContrast = settings.value.highContrast) {
                 val recordButtonFocusRequester = FocusRequester()
                 val textareaFocusRequester = FocusRequester()
+
+                LaunchedEffect(settings.value.language) {
+                    val externalFilesDir = applicationContext.getExternalFilesDir(null)
+                    val absoluteModelPath = "$externalFilesDir/models/${settings.value.language.modelPath}"
+                    getSharedPreferences("voskle", Context.MODE_PRIVATE)
+                        .edit()
+                        .putString("modelPath", absoluteModelPath)
+                        .apply()
+                    Log.d("ModelPathDebug", "Saved model path: $absoluteModelPath")
+                }
 
                 LaunchedEffect(
                     viewModel.getVoskHub().isModelAvailable(),
@@ -105,39 +171,25 @@ class MainActivity : ComponentActivity() {
                     settings.value.generateSpeakerLabels
                 ) {
                     if (viewModel.getVoskHub().getModelPath() != settings.value.language.modelPath) {
-                        // If the language changed, change the model path referenced in VoskHub
                         viewModel.onAction(VLTAction.SetModelStatus(false))
                         viewModel.getVoskHub().setModelPath(settings.value.language.modelPath)
-
-                        // Dismiss the download confirmation dialog if the model is already downloaded.
                         if (state.displayDownloadConfirmation && viewModel.getVoskHub().isModelAvailable()) {
                             viewModel.onAction(VLTAction.ShowDownloadConfirmation(false))
                         }
-
-                        // Initialize the model if it is already downloaded.
                         if (viewModel.getVoskHub().isModelAvailable()) {
                             viewModel.getVoskHub().initModel(settings.value.generateSpeakerLabels)
                         } else {
                             viewModel.onAction(VLTAction.ShowDownloadConfirmation(true))
                         }
-                     }
-
-                    // Initialize the model if it's downloaded but not initialized yet.
+                    }
                     if (viewModel.getVoskHub().isModelAvailable() && !state.modelLoaded && state.fetchState == FetchState.NO_MODEL) {
                         viewModel.getVoskHub().initModel(settings.value.generateSpeakerLabels)
                     }
-
-                    // A local variable is preferable here, as we don't
-                    // want to accidentally initialize the model with the wrong settings.
                     val vosk = viewModel.getVoskHub()
-
-                    // Reinitialize the model if speaker recognition is wanted
-                    // but not enabled.
                     if (settings.value.generateSpeakerLabels && state.modelLoaded && state.fetchState == FetchState.READY && !vosk.isUsingSpeakerRecognition()) {
                         vosk.reset()
                         vosk.initModel(true)
                     }
-
                     if (!settings.value.generateSpeakerLabels && state.modelLoaded && state.fetchState == FetchState.READY && vosk.isUsingSpeakerRecognition()) {
                         vosk.reset()
                         vosk.initModel()
@@ -154,15 +206,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val windowVisible = isInMultiWindowMode || isInPictureInPictureMode
                     if (!state.isFocused && settings.value.stopRecordingOnFocusLoss && !windowVisible && state.isRecording) {
-                        viewModel.getVoskHub().toggleRecording()
+                        // No longer stopping in-app; let service run in background.
                     }
-
-                    /*
-                    If the user re-enters the app (window gains focus) while the transcript
-                    is the focused element, a crash occurs - possibly only while using TalkBack.
-                    To avoid this, we move th focus away from the transcript when the window
-                    loses focus.
-                     */
                     if (!state.isFocused && state.transcriptFocused) {
                         recordButtonFocusRequester.requestFocus()
                     }
@@ -172,11 +217,7 @@ class MainActivity : ComponentActivity() {
                     contract = ActivityResultContracts.RequestPermission(),
                     onResult = { isGranted ->
                         if (isGranted) {
-                            if (viewModel.getVoskHub().isModelAvailable()) {
-                                viewModel.getVoskHub().toggleRecording()
-                            } else {
-                                viewModel.getVoskHub().initModel()
-                            }
+                            // Just enable button, don't auto-start service
                         }
                     }
                 )
@@ -186,7 +227,6 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
                 ) {
-
                     when (LocalConfiguration.current.orientation) {
                         Configuration.ORIENTATION_LANDSCAPE -> {
                             Row(
@@ -221,32 +261,6 @@ class MainActivity : ComponentActivity() {
                                                 if (!state.keyboardInput) {
                                                     textareaFocusRequester.requestFocus()
                                                 }
-
-                                                if (state.isRecording && !state.keyboardInput) {
-                                                    viewModel.onAction(
-                                                        VLTAction.SetResumeRecording(
-                                                            true
-                                                        )
-                                                    )
-                                                    viewModel
-                                                        .getVoskHub()
-                                                        .toggleRecording()
-                                                }
-
-                                                if (state.keyboardInput && state.resumeRecording) {
-                                                    viewModel
-                                                        .getVoskHub()
-                                                        .toggleRecording()
-                                                    viewModel.onAction(
-                                                        VLTAction.SetResumeRecording(
-                                                            false
-                                                        )
-                                                    )
-                                                }
-
-                                                // Trigger the insertion of a result separator if appropriate
-                                                viewModel.onAction(VLTAction.UpdateTranscript(". "))
-
                                                 viewModel.onAction(
                                                     VLTAction.SetKeyboardInput(
                                                         !state.keyboardInput
@@ -292,32 +306,6 @@ class MainActivity : ComponentActivity() {
                                                 if (!state.keyboardInput) {
                                                     textareaFocusRequester.requestFocus()
                                                 }
-
-                                                if (state.isRecording && !state.keyboardInput) {
-                                                    viewModel.onAction(
-                                                        VLTAction.SetResumeRecording(
-                                                            true
-                                                        )
-                                                    )
-                                                    viewModel
-                                                        .getVoskHub()
-                                                        .toggleRecording()
-                                                }
-
-                                                if (state.keyboardInput && state.resumeRecording) {
-                                                    viewModel
-                                                        .getVoskHub()
-                                                        .toggleRecording()
-                                                    viewModel.onAction(
-                                                        VLTAction.SetResumeRecording(
-                                                            false
-                                                        )
-                                                    )
-                                                }
-
-                                                // Trigger the insertion of a result separator if appropriate.
-                                                viewModel.onAction(VLTAction.UpdateTranscript(". "))
-
                                                 viewModel.onAction(
                                                     VLTAction.SetKeyboardInput(
                                                         !state.keyboardInput
@@ -340,31 +328,42 @@ class MainActivity : ComponentActivity() {
                                     .fillMaxHeight()
                                     .fillMaxWidth()
                             ) {
-                                Textarea(
-                                    settings = settings.value,
-                                    state = state,
-                                    onAction = viewModel::onAction,
-                                    modifier = Modifier
-                                        .onFocusChanged {
-                                            viewModel.onAction(VLTAction.SetTranscriptFocused(it.isFocused))
-                                        }
-                                        .focusRequester(textareaFocusRequester)
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
                                         .weight(5f)
-                                )
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .padding(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Transcript:",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = state.transcript,           // THIS DISPLAYS EVERYTHING!
+                                        modifier = Modifier.padding(top = 8.dp),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+
 
                                 Row {
                                     Button(
                                         enabled = viewModel.state.modelLoaded && !state.keyboardInput,
                                         onClick = {
-                                            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED && !state.isRecording) {
-                                                viewModel.onAction(
-                                                    VLTAction.ShowPermissionsDialog(
-                                                        true
-                                                    )
-                                                )
+                                            val serviceIntent = Intent(this@MainActivity, TranscriptionService::class.java)
+                                            if (state.isRecording) {
+                                                stopService(serviceIntent)
                                             } else {
-                                                viewModel.getVoskHub().toggleRecording()
+                                                if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                                    startForegroundService(serviceIntent)
+                                                } else {
+                                                    viewModel.onAction(VLTAction.ShowPermissionsDialog(true))
+                                                }
                                             }
+                                            viewModel.onAction(VLTAction.SetRecordingStatus(!state.isRecording))
                                         },
                                         modifier = Modifier
                                             .padding(8.dp)
@@ -372,7 +371,7 @@ class MainActivity : ComponentActivity() {
                                             .focusRequester(recordButtonFocusRequester)
                                     ) {
                                         val transcribeButtonLabel =
-                                            if (viewModel.state.modelLoaded && viewModel.state.isRecording) stringResource(
+                                            if (viewModel.state.isRecording) stringResource(
                                                 id = R.string.stop_transcribing
                                             ) else stringResource(id = R.string.start_transcribing)
                                         Text(text = transcribeButtonLabel)
@@ -388,7 +387,6 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         Text(text = stringResource(id = R.string.clear_transcript))
                                     }
-
                                 }
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -435,15 +433,17 @@ class MainActivity : ComponentActivity() {
                                     Button(
                                         enabled = viewModel.state.modelLoaded && !state.keyboardInput,
                                         onClick = {
-                                            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED && !state.isRecording) {
-                                                viewModel.onAction(
-                                                    VLTAction.ShowPermissionsDialog(
-                                                        true
-                                                    )
-                                                )
+                                            val serviceIntent = Intent(this@MainActivity, TranscriptionService::class.java)
+                                            if (state.isRecording) {
+                                                stopService(serviceIntent)
                                             } else {
-                                                viewModel.getVoskHub().toggleRecording()
+                                                if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                                    startForegroundService(serviceIntent)
+                                                } else {
+                                                    viewModel.onAction(VLTAction.ShowPermissionsDialog(true))
+                                                }
                                             }
+                                            viewModel.onAction(VLTAction.SetRecordingStatus(!state.isRecording))
                                         },
                                         modifier = Modifier
                                             .padding(horizontal = 8.dp)
@@ -451,7 +451,7 @@ class MainActivity : ComponentActivity() {
                                             .focusRequester(recordButtonFocusRequester)
                                     ) {
                                         val transcribeButtonLabel =
-                                            if (viewModel.state.modelLoaded && viewModel.state.isRecording) stringResource(
+                                            if (viewModel.state.isRecording) stringResource(
                                                 id = R.string.stop_transcribing
                                             ) else stringResource(id = R.string.start_transcribing)
                                         Text(text = transcribeButtonLabel)
@@ -468,7 +468,6 @@ class MainActivity : ComponentActivity() {
                                         Text(text = stringResource(id = R.string.clear_transcript))
                                     }
                                 }
-
 
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -490,7 +489,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-
                     if (state.displaySettingsDialog) {
                         SettingsDialog(
                             settings = settings.value,
@@ -499,7 +497,6 @@ class MainActivity : ComponentActivity() {
                             onAction = viewModel::onAction
                         )
                     }
-
                     if (state.displayDownloadConfirmation) {
                         DownloadConfirmation(
                             settings = settings.value,
@@ -507,11 +504,9 @@ class MainActivity : ComponentActivity() {
                             onAction = viewModel::onAction
                         )
                     }
-
                     if (state.displayDownloadSuccess) {
                         DownloadSuccessDialog(onAction = viewModel::onAction)
                     }
-
                     if (state.displayPermissionsDialog) {
                         PermissionDialog(
                             permissionTextProvider = RecordAudioPermissionTextProvider(),
@@ -525,9 +520,8 @@ class MainActivity : ComponentActivity() {
                             },
                             onGoToAppSettingsClick = { openAppSettings() })
                     }
-
                     if (state.error != null) {
-                        val dialog = when (@Suppress("UNNECESSARY_NOT_NULL_ASSERTION") val err = state.error!!) {
+                        val dialog = when (val err = state.error!!) {
                             is ErrorKind.ConnectionFailed -> {
                                 ConnectionErrorDialog(
                                     downloadFunction = ::downloadModel,
@@ -537,7 +531,6 @@ class MainActivity : ComponentActivity() {
                                     modelPath = settings.value.language.modelPath
                                 )
                             }
-
                             is ErrorKind.UnexpectedResponse -> {
                                 UnexpectedResponseDialog(
                                     downloadFunction = ::downloadModel,
@@ -547,7 +540,6 @@ class MainActivity : ComponentActivity() {
                                     modelPath = settings.value.language.modelPath
                                 )
                             }
-
                             is ErrorKind.DataProcessionFailed -> {
                                 DataProcessingErrorDialog(
                                     downloadFunction = ::downloadModel,
@@ -557,14 +549,12 @@ class MainActivity : ComponentActivity() {
                                     modelPath = settings.value.language.modelPath
                                 )
                             }
-
                             is ErrorKind.TranscriptionTimeout -> {
                                 TimeouteErrorDialog(
                                     contactUsCallback = ::contactUs,
                                     onAction = viewModel::onAction
                                 )
                             }
-
                             is ErrorKind.ModelError -> {
                                 ModelErrorDialog(
                                     message = err.message,
@@ -580,9 +570,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(transcriptReceiver)
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-
         viewModel.onAction(VLTAction.SetFocusedState(hasFocus))
     }
 
@@ -591,8 +585,8 @@ class MainActivity : ComponentActivity() {
         val subject = "[vlt] Feedback"
         val androidSdkInt = android.os.Build.VERSION.SDK_INT
         val model = android.os.Build.MODEL
-        val appVersion = BuildConfig.VERSION_NAME
-        val appBuildInt = BuildConfig.VERSION_CODE
+        val appVersion = 1
+        val appBuildInt = 1
         val text = "\n\n-----\n\nApp version: $appVersion ($appBuildInt)\nAndroid version: $androidSdkInt\nModel: $model"
         val intent = Intent(Intent.ACTION_SENDTO).apply {
             data = Uri.parse("mailto:")
@@ -618,7 +612,6 @@ class MainActivity : ComponentActivity() {
                 viewModel.onAction(VLTAction.SetError(ErrorKind.ConnectionFailed(e.localizedMessage ?: "")))
                 viewModel.onAction(VLTAction.UpdateFetchState(FetchState.NO_MODEL))
             }
-
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     if (!response.isSuccessful) {
