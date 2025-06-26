@@ -5,6 +5,9 @@ A simple, accessible and offline real-time transcription app for Android.
 ## Adaptation of the original repo
 The transcription keeps running when the phone is locked. At any time, you can unlock the display and see what was said.
 
+## Disclaimer
+This is only a proof of concept for applied research. It has not been optimized for production use.
+
 ## Yet another transcription app?
 
 It's true that many apps are capable of transcribing speech to text; increasingly, even mobile operating systems offer options to recognize speech in the vicinity and transcribe it. In our experience, though, there usually are one or more of the following caveats:
